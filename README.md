@@ -10,7 +10,8 @@ Sistem ini memungkinkan pengguna untuk melakukan pembelian paket data, mengecek 
 ## 🚀 Cara Install (Otomatis)
 Jalankan perintah ini di VPS (Ubuntu/Debian) kamu:
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/Pemulaajiw/botwador/main/install.sh && chmod +x install.sh && ./install.sh```
+wget -O install.sh https://raw.githubusercontent.com/Pemulaajiw/botwador/main/install.sh && chmod +x install.sh && ./install.sh
+```
 
 ## ⚙️ Cara Update / Edit Data Bot
 Jika ingin mengganti **API Key, Nomor Owner, atau Markup Harga**, ikuti langkah ini:

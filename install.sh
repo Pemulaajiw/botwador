@@ -59,7 +59,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/botwador
-ExecStart=/usr/bin/node index.cjs
+ExecStart=/usr/bin/node index.js
 Restart=always
 RestartSec=5
 

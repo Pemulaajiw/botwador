@@ -3,32 +3,27 @@ import pino from 'pino';
 import fs from 'fs';
 import axios from 'axios';
 
-// --- KONFIGURASI UTAMA ---
+// --- KONFIGURASI UTAMA (Membaca dari file eksternal) ---
+let configRaw = fs.readFileSync('./config.json');
+let externalConfig = JSON.parse(configRaw);
+
 const config = {
-    // Info Bot
-    phoneNumber: "6281247586568",
-    ownerNumber: "6287898083051",
-    ownerName: "Klmpkfs Dev",
-    sessionName: "session",
+    // Ambil dari input install.sh
+    phoneNumber: externalConfig.phoneNumber,
+    ownerNumber: externalConfig.ownerNumber,
+    ownerName: externalConfig.ownerName,
+    apiKeyKMSP: externalConfig.apiKeyKMSP, 
+    apiKeyPayment: externalConfig.apiKeyPayment,
     
-    // Database Files
+    // Settingan Default (Tetap)
+    sessionName: "session",
     blockedGroupsFile: "./database/blocked_groups.json",
     xlSessionsFile: "./database/xl_sessions.json",
     userBalanceFile: "./database/user_balance.json", 
     historyFile: "./database/history.json",           
-    
-    // API Keys PPOB (KMSP)
-    apiKeyKMSP: "29dc3989-2394-448d-a7a5-8a6c3fa59f5d", 
-    
-    // API Key Payment Gateway (BARU)
-    apiKeyPayment: "e435777e-47ed-4485-a06c-767dbe895d1f", // 
-    
-    // API Key Cek Kuota V2 (Sidompul)
     sidompulAuth: "Basic c2lkb21wdWxhcGk6YXBpZ3drbXNw",
     sidompulKey: "60ef29aa-a648-4668-90ae-20951ef90c55",
-
-    // Settingan Harga
-    markup: 3000, // Keuntungan per transaksi
+    markup: 3000, 
 };
 
 // --- DATABASE HANDLER ---

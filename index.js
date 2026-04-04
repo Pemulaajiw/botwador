@@ -3,27 +3,31 @@ import pino from 'pino';
 import fs from 'fs';
 import axios from 'axios';
 
-// --- KONFIGURASI UTAMA (Membaca dari file eksternal) ---
-let configRaw = fs.readFileSync('./config.json');
-let externalConfig = JSON.parse(configRaw);
+// --- KONFIGURASI UTAMA ---
+// Pastikan file config.json ada (hasil dari install.sh)
+if (!fs.existsSync('./config.json')) {
+    console.error("File config.json tidak ditemukan! Jalankan install.sh dulu.");
+    process.exit(1);
+}
+
+const externalConfig = JSON.parse(fs.readFileSync('./config.json'));
 
 const config = {
-    // Ambil dari input install.sh
-    phoneNumber: externalConfig.phoneNumber,
+    // Diambil otomatis dari hasil input install.sh kamu
     ownerNumber: externalConfig.ownerNumber,
     ownerName: externalConfig.ownerName,
     apiKeyKMSP: externalConfig.apiKeyKMSP, 
     apiKeyPayment: externalConfig.apiKeyPayment,
+    markup: parseInt(externalConfig.markup) || 3000,
+    sidompulAuth: externalConfig.sidompulAuth || "Basic c2lkb21wdWxhcGk6YXBpZ3drbXNw",
+    sidompulKey: externalConfig.sidompulKey || "60ef29aa-a648-4668-90ae-20951ef90c55",
     
-    // Settingan Default (Tetap)
+    // Settingan Folder & Database
     sessionName: "session",
     blockedGroupsFile: "./database/blocked_groups.json",
     xlSessionsFile: "./database/xl_sessions.json",
     userBalanceFile: "./database/user_balance.json", 
     historyFile: "./database/history.json",           
-    sidompulAuth: "Basic c2lkb21wdWxhcGk6YXBpZ3drbXNw",
-    sidompulKey: "60ef29aa-a648-4668-90ae-20951ef90c55",
-    markup: 3000, 
 };
 
 // --- DATABASE HANDLER ---
@@ -37,15 +41,14 @@ let xlSessions = loadObjDB(config.xlSessionsFile);
 let userBalance = loadObjDB(config.userBalanceFile);
 let historyTrx = loadDB(config.historyFile);
 
-let pendingLogin = {}; 
-let pendingOrders = {}; // Format baru: { sender: { transaction_id, type, ... } }
-
 // --- HELPER FUNCTION ---
 const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
 const saveBalance = () => saveDB(config.userBalanceFile, userBalance);
 const saveHistory = () => saveDB(config.historyFile, historyTrx);
 const saveXLSessions = () => saveDB(config.xlSessionsFile, xlSessions);
 const saveBlockedGroups = () => saveDB(config.blockedGroupsFile, blockedGroups);
+
+// ... (Lanjut ke fungsi startBot dan logika case menu kamu)
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(config.sessionName);

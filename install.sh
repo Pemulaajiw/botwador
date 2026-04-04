@@ -11,6 +11,7 @@ echo -e "${GREEN}   INSTALLER BOT WA WADOR (PT FANTUNNEL)  ${NC}"
 echo -e "${BLUE}==========================================${NC}"
 
 # --- Tanya Data ke User ---
+read -p "Masukkan Nomor Bot (Contoh: 62878xxx): " BOT_NUM
 read -p "Masukkan Nomor Owner (Contoh: 62878xxx): " OWNER_NUM
 read -p "Masukkan Nama Owner: " OWNER_NAME
 read -p "Masukkan API Key KMSP: " API_KMSP

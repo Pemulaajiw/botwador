@@ -37,6 +37,7 @@ echo -e "${YELLOW}3. Mengatur Konfigurasi Bot...${NC}"
 # Membuat file config.json dengan data yang diinput user
 cat <<EOF > ./config.json
 {
+  "phoneNumber": "$BOT_NUM",
   "ownerNumber": "$OWNER_NUM",
   "ownerName": "$OWNER_NAME",
   "apiKeyKMSP": "$API_KMSP",

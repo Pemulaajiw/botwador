@@ -14,6 +14,7 @@ const externalConfig = JSON.parse(fs.readFileSync('./config.json'));
 
 const config = {
     // Diambil otomatis dari hasil input install.sh kamu
+    phoneNumber: externalConfig.phoneNumber,
     ownerNumber: externalConfig.ownerNumber,
     ownerName: externalConfig.ownerName,
     apiKeyKMSP: externalConfig.apiKeyKMSP, 

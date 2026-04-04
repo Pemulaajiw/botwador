@@ -1,0 +1,15 @@
+{
+  "name": "baileys-pro-bot",
+  "version": "2.0.0",
+  "description": "Bot WhatsApp XL PPOB & Payment Gateway",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "github:hamxyztmvn/baileys-pro",
+    "axios": "^1.6.0",
+    "pino": "^8.0.0"
+  }
+}

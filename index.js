@@ -64,32 +64,42 @@ async function startBot() {
     });
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
 
-        if (!sock.authState.creds.registered && !sock.authState.creds.pairingCodeSent) {
-            console.log('\n[!] Menyiapkan Pairing Code (Tunggu 5 detik)...');
-            setTimeout(async () => {
-                try {
-                    const code = await sock.requestPairingCode(config.phoneNumber);
-                    console.log(`\n============================`);
-                    console.log(`PAIRING CODE ANDA: ${code}`);
-                    console.log(`============================\n`);
-                    sock.authState.creds.pairingCodeSent = true;
-                } catch (err) {
-                    console.error("Gagal meminta Pairing Code:", err);
-                }
-            }, 5000);
-        }
+        // Cegah request ganda jika sedang proses menghubungkan
+        if (connection === 'connecting') return;
 
-    if (connection === 'close') {
+        if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log(`[!] Koneksi terputus: ${lastDisconnect.error?.message}. Reconnecting: ${shouldReconnect}`);
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
             console.log('\n[+] Bot Online! 🚀');
         }
-    });
 
-    sock.ev.on('creds.update', saveCreds);
+        // Hanya minta pairing code jika belum terdaftar dan bot tidak sedang login
+        if (!sock.authState.creds.registered && !sock.authState.creds.pairingCodeSent) {
+            console.log('\n[!] Menunggu koneksi stabil untuk Pairing Code (10 detik)...');
+            
+            // Gunakan flag sementara agar tidak terjadi looping request
+            sock.authState.creds.pairingCodeSent = true; 
+
+            setTimeout(async () => {
+                try {
+                    // Pastikan nomor ada di config
+                    let phoneNumber = config.phoneNumber.replace(/[^0-9]/g, '');
+                    const code = await sock.requestPairingCode(phoneNumber);
+                    console.log(`\n============================`);
+                    console.log(`PAIRING CODE ANDA: ${code}`);
+                    console.log(`============================\n`);
+                } catch (err) {
+                    console.error("Gagal meminta Pairing Code:", err);
+                    // Reset flag jika gagal agar bisa coba lagi setelah restart
+                    sock.authState.creds.pairingCodeSent = false;
+                }
+            }, 10000); // Naikkan ke 10 detik agar lebih aman
+        }
+    });
 
     sock.ev.on('messages.upsert', async (m) => {
         try {

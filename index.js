@@ -61,6 +61,7 @@ async function startBot() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         auth: state
+        browser: ["Ubuntu", "Chrome", "20.0.04"] 
     });
 
     sock.ev.on('connection.update', async (update) => {

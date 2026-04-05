@@ -1,3 +1,4 @@
+cat << 'EOF' > index.js
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import fs from 'fs';
@@ -606,3 +607,4 @@ case 'ceksaldo':
 }
 
 startBot();
+EOF

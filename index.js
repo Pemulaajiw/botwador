@@ -62,11 +62,30 @@ async function startBot() {
         auth: state
     });
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) startBot();
-        } else if (connection === 'open') console.log('Bot Online! 🚀');
+
+        if (!sock.authState.creds.registered && !sock.authState.creds.pairingCodeSent) {
+            console.log('\n[!] Menyiapkan Pairing Code (Tunggu 5 detik)...');
+            setTimeout(async () => {
+                try {
+                    const code = await sock.requestPairingCode(config.phoneNumber);
+                    console.log(`\n============================`);
+                    console.log(`PAIRING CODE ANDA: ${code}`);
+                    console.log(`============================\n`);
+                    sock.authState.creds.pairingCodeSent = true;
+                } catch (err) {
+                    console.error("Gagal meminta Pairing Code:", err);
+                }
+            }, 5000);
+        }
+
+    if (connection === 'close') {
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startBot();
+        } else if (connection === 'open') {
+            console.log('\n[+] Bot Online! 🚀');
+        }
     });
 
     sock.ev.on('creds.update', saveCreds);

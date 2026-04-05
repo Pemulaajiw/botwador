@@ -54,14 +54,13 @@ const saveBlockedGroups = () => saveDB(config.blockedGroupsFile, blockedGroups);
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(config.sessionName);
     const { version } = await fetchLatestBaileysVersion();
-    const sock = makeWASocket({ version, logger: pino({ level: 'silent' }), printQRInTerminal: false, auth: state });
-
-    if (!sock.authState.creds.registered) {
-        setTimeout(async () => {
-            const code = await sock.requestPairingCode(config.phoneNumber);
-            console.log(`Pairing Code: ${code}`);
-        }, 3000);
-    }
+    
+    const sock = makeWASocket({
+        version,
+        logger: pino({ level: 'silent' }),
+        printQRInTerminal: false,
+        auth: state
+    });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;

@@ -317,6 +317,7 @@ async function startBot() {
 
                     case 'cekbayar': // Cek Status API Baru
                         if (!pendingOrders[sender]) return sock.sendMessage(from, { text: '❌ Tidak ada transaksi pending.' }, { quoted: msg });
+                        pendingOrders[sender].expired = Date.now() + (5 * 60 * 1000);
                         
                         await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran...' }, { quoted: msg });
                         const order = pendingOrders[sender];
@@ -349,6 +350,12 @@ async function startBot() {
                                         } else {
                                             // Gagal Tembak (Saldo Payment sudah masuk ke Admin, tapi paket gagal)
                                             await sock.sendMessage(from, { text: `⚠️ Pembayaran sukses, tapi gagal tembak paket: ${buy.data.message}. Hubungi Admin untuk refund manual.` }, { quoted: msg });
+                                            if (Date.now() > order.expired) {
+                                            delete pendingOrders[sender];
+                                            return sock.sendMessage(from, {
+                                            text: '❌ Transaksi expired. Silakan buat ulang.'
+                                            }, { quoted: msg });
+                                            }
                                         }
                                     } catch (e) { console.error(e); }
 

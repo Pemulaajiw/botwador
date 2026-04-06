@@ -124,24 +124,29 @@ async function startBot() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg.message || msg.key.fromMe) return;
+    try {
+        const msg = m.messages[0];
+        if (!msg || !msg.message || msg.key.fromMe) return;
 
-            const type = Object.keys(msg.message)[0];
-            const content = type === 'conversation' ? msg.message.conversation :
-                            type === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : '';
-            
-            const from = msg.key.remoteJid;
-            const isGroup = from.endsWith('@g.us');
-            const sender = isGroup ? msg.key.participant : from;
-            const isOwner = sender.includes(config.ownerNumber);
-            const pushname = msg.pushName || "Kak";
+        const from = msg.key.remoteJid;
+        const isGroup = from.endsWith('@g.us');
+        const sender = isGroup ? msg.key.participant : from;
 
-            if (content.startsWith('.')) {
-                const command = content.slice(1).trim().split(' ')[0].toLowerCase();
-                const args = content.trim().split(' ').slice(1);
-                const q = args.join(' ');
+        const pushname = msg.pushName || "User";
+
+        const content =
+            msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            msg.message?.imageMessage?.caption ||
+            '';
+
+        const isOwner = sender.split('@')[0] === config.ownerNumber;
+
+        if (!content.startsWith('.')) return;
+
+        const args = content.trim().split(' ');
+        const command = args.shift().slice(1).toLowerCase();
+        const q = args.join(' ');
 
                 switch (command) {
                     case 'menu':

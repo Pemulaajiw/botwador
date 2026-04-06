@@ -52,7 +52,6 @@ const saveBalance = () => saveDB(config.userBalanceFile, userBalance);
 const saveHistory = () => saveDB(config.historyFile, historyTrx);
 const saveXLSessions = () => saveDB(config.xlSessionsFile, xlSessions);
 const saveBlockedGroups = () => saveDB(config.blockedGroupsFile, blockedGroups);
-
 // ... (Lanjut ke fungsi startBot dan logika case menu kamu)
 
 async function startBot() {
@@ -147,6 +146,9 @@ async function startBot() {
         const args = content.trim().split(' ');
         const command = args.shift().slice(1).toLowerCase();
         const q = args.join(' ');
+        const isUserBusy = (sender) => {
+        return pendingOrders[sender] ? true : false;
+};
 
                 switch (command) {
                     case 'menu':
@@ -216,6 +218,11 @@ async function startBot() {
                     case 'beli': // Direct QRIS
                         if (!args[0] || !args[1]) return sock.sendMessage(from, { text: 'Contoh: .beli XL10GB 0878xxxx' }, { quoted: msg });
                         if (pendingOrders[sender]) return sock.sendMessage(from, { text: '⚠️ Ada transaksi pending. Ketik .batal atau selesaikan dulu.' }, { quoted: msg });
+                        if (isUserBusy(sender)) {
+                        return sock.sendMessage(from, {
+                        text: '⚠️ Selesaikan transaksi sebelumnya dulu!'
+                     }, { quoted: msg });
+                        }
 
                         try {
                             // 1. Cek Produk di KMSP
@@ -269,6 +276,11 @@ async function startBot() {
                     case 'isisaldo': // Topup Saldo
                         if (!args[0]) return sock.sendMessage(from, { text: 'Contoh: .isisaldo 50000' }, { quoted: msg });
                         if (pendingOrders[sender]) return sock.sendMessage(from, { text: 'Selesaikan/batalkan transaksi sebelumnya dulu.' }, { quoted: msg });
+                        if (isUserBusy(sender)) {
+                        return sock.sendMessage(from, {
+                        text: '⚠️ Selesaikan transaksi sebelumnya dulu!'
+                    }, { quoted: msg });
+                        }                        
 
                         const nominalTopup = parseInt(args[0]);
                         if (isNaN(nominalTopup) || nominalTopup < 1000) return sock.sendMessage(from, { text: 'Minimal topup 1000.' }, { quoted: msg });

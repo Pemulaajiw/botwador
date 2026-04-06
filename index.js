@@ -146,8 +146,6 @@ async function startBot() {
         const args = content.trim().split(' ');
         const command = args.shift().slice(1).toLowerCase();
         const q = args.join(' ');
-        const isUserBusy = (sender) => {
-        return pendingOrders[sender] ? true : false;
 };
 
                 switch (command) {
@@ -218,11 +216,6 @@ async function startBot() {
                     case 'beli': // Direct QRIS
                         if (!args[0] || !args[1]) return sock.sendMessage(from, { text: 'Contoh: .beli XL10GB 0878xxxx' }, { quoted: msg });
                         if (pendingOrders[sender]) return sock.sendMessage(from, { text: '⚠️ Ada transaksi pending. Ketik .batal atau selesaikan dulu.' }, { quoted: msg });
-                        if (isUserBusy(sender)) {
-                        return sock.sendMessage(from, {
-                        text: '⚠️ Selesaikan transaksi sebelumnya dulu!'
-                     }, { quoted: msg });
-                        }
 
                         try {
                             // 1. Cek Produk di KMSP
@@ -276,11 +269,6 @@ async function startBot() {
                     case 'isisaldo': // Topup Saldo
                         if (!args[0]) return sock.sendMessage(from, { text: 'Contoh: .isisaldo 50000' }, { quoted: msg });
                         if (pendingOrders[sender]) return sock.sendMessage(from, { text: 'Selesaikan/batalkan transaksi sebelumnya dulu.' }, { quoted: msg });
-                        if (isUserBusy(sender)) {
-                        return sock.sendMessage(from, {
-                        text: '⚠️ Selesaikan transaksi sebelumnya dulu!'
-                    }, { quoted: msg });
-                        }                        
 
                         const nominalTopup = parseInt(args[0]);
                         if (isNaN(nominalTopup) || nominalTopup < 1000) return sock.sendMessage(from, { text: 'Minimal topup 1000.' }, { quoted: msg });
@@ -315,77 +303,55 @@ async function startBot() {
                         } catch (e) { console.error(e); }
                         break;
 
-                    case 'cekbayar': // Cek Status Pembayaran (Satu Kali Pengecekan)
+                    case 'cekbayar': // Cek Status API Baru
                         if (!pendingOrders[sender]) return sock.sendMessage(from, { text: '❌ Tidak ada transaksi pending.' }, { quoted: msg });
                         
-                        await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran ke server...' }, { quoted: msg });
-                        const currentOrder = pendingOrders[sender];
+                        await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran...' }, { quoted: msg });
+                        const order = pendingOrders[sender];
 
                         try {
-                            const res = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
+                            // Hit API Cek Status 
+                            const resStatus = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
                                 params: {
-                                    transaction_id: currentOrder.transaction_id,
+                                    transaction_id: order.transaction_id,
                                     apikey: config.apiKeyPayment
                                 }
                             });
 
-                            if (res.data.paid === true) { // Jika pembayaran sukses
-                                await sock.sendMessage(from, { text: '✅ Pembayaran berhasil dikonfirmasi! Pesanan sedang diproses...' }, { quoted: msg });
-                                
-                                // --- LOGIKA SETELAH BAYAR ---
-                                if (currentOrder.type === 'topup') {
-                                    userBalance[sender] = (userBalance[sender] || 0) + currentOrder.amount_added;
-                                    saveBalance();
-                                    await sock.sendMessage(from, { text: `💰 Saldo berhasil ditambahkan!\nNominal: ${formatRupiah(currentOrder.amount_added)}\nSaldo saat ini: ${formatRupiah(userBalance[sender])}` });
-                                } else if (currentOrder.type === 'buy_direct') {
-                                    // TODO: Masukkan logika API tembak XL KMSP di sini
-                                    await sock.sendMessage(from, { text: `🚀 Sedang menembak paket ${currentOrder.name} ke nomor ${currentOrder.phone}...` });
-                                }
-                                
-                                // Hapus pesanan dari antrean
-                                delete pendingOrders[sender];
-                            } else {
-                                await sock.sendMessage(from, { text: '⏳ Pembayaran belum terdeteksi. Silakan coba lagi dalam beberapa saat.' }, { quoted: msg });
-                            }
-
-                        } catch (e) {
-                            console.error('Error cekbayar:', e);
-                            await sock.sendMessage(from, { text: '❌ Terjadi kesalahan sistem saat menghubungi payment gateway.' }, { quoted: msg });
-                        }
-                        break;
+                            // Logic Cek Status
+                            if (resStatus.data.paid === true) {
                                 // --- PEMBAYARAN SUKSES ---
                                 
                                 if (order.type === 'buy_direct') {
-                    await sock.sendMessage(from, { text: '✅ Pembayaran DITERIMA! Memproses order...' }, { quoted: msg });
-                    
-                    try {
-                        const buy = await axios.get(`https://golang-openapi-packagepurchase-xltembakservice.kmsp-store.com/v1`, {
-                            params: { api_key: config.apiKeyKMSP, package_code: order.package_code, phone: order.phone, price_or_fee: order.price_server }
-                        });
+                                    await sock.sendMessage(from, { text: '✅ Pembayaran DITERIMA! Memproses order...' }, { quoted: msg });
+                                    // Eksekusi Tembak Paket
+                                    try {
+                                        const buy = await axios.get(`https://golang-openapi-packagepurchase-xltembakservice.kmsp-store.com/v1`, {
+                                            params: { api_key: config.apiKeyKMSP, package_code: order.package_code, phone: order.phone, price_or_fee: order.price_server }
+                                        });
+                                        if (buy.data.status) {
+                                            historyTrx.push({ date: new Date(), sender: sender, ...order, trx_id: buy.data.data.trx_id, status: 'sukses' });
+                                            saveHistory();
+                                            delete pendingOrders[sender];
+                                            await sock.sendMessage(from, { text: `✅ *TRANSAKSI SUKSES!* 🚀\n\nPaket sedang dikirim ke ${order.phone}.\nTrx ID: ${buy.data.data.trx_id}` }, { quoted: msg });
+                                        } else {
+                                            // Gagal Tembak (Saldo Payment sudah masuk ke Admin, tapi paket gagal)
+                                            await sock.sendMessage(from, { text: `⚠️ Pembayaran sukses, tapi gagal tembak paket: ${buy.data.message}. Hubungi Admin untuk refund manual.` }, { quoted: msg });
+                                        }
+                                    } catch (e) { console.error(e); }
 
-                        if (buy.data.status) {
-                            historyTrx.push({ date: new Date(), sender: sender, ...order, trx_id: buy.data.data.trx_id, status: 'sukses' });
-                            saveHistory();
-                            delete pendingOrders[sender];
-                            await sock.sendMessage(from, { text: `✅ *TRANSAKSI SUKSES!* 🚀\n\nPaket sedang dikirim ke ${order.phone}.\nTrx ID: ${buy.data.data.trx_id}` }, { quoted: msg });
-                        } else {
-                            await sock.sendMessage(from, { text: `⚠️ Pembayaran sukses, tapi gagal tembak paket: ${buy.data.message}. Hubungi Admin untuk refund manual.` }, { quoted: msg });
-                        }
-                    } catch (e) {
-                        console.error(e);
-                    }
+                                } else if (order.type === 'topup') {
+                                    // Eksekusi Tambah Saldo
+                                    if (!userBalance[sender]) userBalance[sender] = 0;
+                                    userBalance[sender] += order.amount_added;
+                                    saveBalance();
+                                    delete pendingOrders[sender];
+                                    await sock.sendMessage(from, { text: `✅ *Topup Berhasil!*\n\nSaldo Masuk: ${formatRupiah(order.amount_added)}\nTotal Saldo: ${formatRupiah(userBalance[sender])}` }, { quoted: msg });
+                                }
 
-                } else if (order.type === 'topup') {
-                    if (!userBalance[sender]) userBalance[sender] = 0;
-                    userBalance[sender] += order.amount_added;
-                    saveBalance();
-                    delete pendingOrders[sender];
-                    await sock.sendMessage(from, { text: `✅ *Topup Berhasil!*\n\nSaldo Masuk: ${formatRupiah(order.amount_added)}\nTotal Saldo: ${formatRupiah(userBalance[sender])}` }, { quoted: msg });
-                }
-
-            } else {
-                await sock.sendMessage(from, { text: '❌ Pembayaran BELUM terdeteksi. Silakan coba beberapa saat lagi jika sudah transfer.' }, { quoted: msg });
-            }
+                            } else {
+                                await sock.sendMessage(from, { text: '❌ Pembayaran BELUM terdeteksi. Silakan coba beberapa saat lagi jika sudah transfer.' }, { quoted: msg });
+                            }
                         } catch (e) {
                             console.error(e);
                             await sock.sendMessage(from, { text: 'Gagal mengecek status pembayaran.' }, { quoted: msg });

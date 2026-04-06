@@ -146,7 +146,6 @@ async function startBot() {
         const args = content.trim().split(' ');
         const command = args.shift().slice(1).toLowerCase();
         const q = args.join(' ');
-};
 
                 switch (command) {
                     case 'menu':

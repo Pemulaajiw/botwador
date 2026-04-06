@@ -522,10 +522,76 @@ async function startBot() {
                         if (!args[0]) return sock.sendMessage(from, { text: 'Masukan Trx ID.' }, { quoted: msg });
                         try { const resSt = await axios.get(`https://golang-openapi-checktransaction-xltembakservice.kmsp-store.com/v1`, { params: { api_key: config.apiKeyKMSP, trx_id: args[0] } });
                         if (resSt.data.status) { const d = resSt.data.data; await sock.sendMessage(from, { text: `📊 *STATUS TRX*\nProduk: ${d.name}\nStatus: *${d.status === 1 ? "SUKSES" : d.status === 2 ? "PENDING" : "GAGAL"}*\nPesan: ${d.rc_message}` }, { quoted: msg }); } } catch (e) { } break;
-                    case 'dor':
-                        if (!isOwner) return;
-                        if (!args[0] || !args[1]) return sock.sendMessage(from, { text: '.dor <kode> <nomor>' }, { quoted: msg });
-                        try { const resPusat = await axios.get(`https://golang-openapi-packagelist-xltembakservice.kmsp-store.com/v1?api_key=${config.apiKeyKMSP}`); const brg = resPusat.data.data.find(p => p.package_code === args[0]); if (!brg) return sock.sendMessage(from, { text: 'Barang ga ada.' }, { quoted: msg }); const shot = await axios.get(`https://golang-openapi-packagepurchase-xltembakservice.kmsp-store.com/v1`, { params: { api_key: config.apiKeyKMSP, package_code: args[0], phone: args[1].replace(/[^0-9]/g, ''), price_or_fee: brg.package_harga_int } }); await sock.sendMessage(from, { text: `DOR! 🔫\nStatus: ${shot.data.message}` }, { quoted: msg }); } catch (e) { } break;
+                     case 'dor':
+                        if (!isOwner) return sock.sendMessage(from, { text: '❌ Akses ditolak. Fitur ini khusus Owner.' }, { quoted: msg });
+                        if (!args[0] || !args[1]) return sock.sendMessage(from, { text: '📌 Format salah!\n\n*Cara pakai:* .dor <kode_paket> <nomor_hp>\n*Contoh:* .dor XL10GB 087812345678' }, { quoted: msg });
+
+                        let packageCode = args[0];
+                        let targetPhone = args[1].replace(/[^0-9]/g, '');
+
+                        // Kasih indikator ke owner kalau bot sedang bekerja
+                        await sock.sendMessage(from, { text: `⏳ Sedang membidik target ${targetPhone}...\nMenyiapkan amunisi...` }, { quoted: msg });
+
+                        try {
+                            // 1. Ambil list paket dari pusat untuk memastikan kode valid dan ambil harga server
+                            const resPusat = await axios.get(`https://golang-openapi-packagelist-xltembakservice.kmsp-store.com/v1`, {
+                                params: { api_key: config.apiKeyKMSP }
+                            });
+
+                            if (!resPusat.data.status) {
+                                return sock.sendMessage(from, { text: `❌ Gagal memuat daftar paket dari server pusat.\nPesan: ${resPusat.data.message || 'Unknown error'}` }, { quoted: msg });
+                            }
+
+                            const brg = resPusat.data.data.find(p => p.package_code === packageCode);
+                            if (!brg) {
+                                return sock.sendMessage(from, { text: `❌ Paket dengan kode *${packageCode}* tidak ditemukan.` }, { quoted: msg });
+                            }
+
+                            // 2. Eksekusi tembak API
+                            const shot = await axios.get(`https://golang-openapi-packagepurchase-xltembakservice.kmsp-store.com/v1`, {
+                                params: { 
+                                    api_key: config.apiKeyKMSP, 
+                                    package_code: packageCode, 
+                                    phone: targetPhone, 
+                                    price_or_fee: brg.package_harga_int 
+                                }
+                            });
+
+                            // 3. Validasi hasil tembakan
+                            if (shot.data.status) {
+                                const trxId = shot.data.data ? shot.data.data.trx_id : '-';
+                                
+                                let successMsg = `🔫 *HEADSHOT! DOR BERHASIL* 🎯\n\n`;
+                                successMsg += `📦 *Produk:* ${brg.package_name}\n`;
+                                successMsg += `📱 *Target:* ${targetPhone}\n`;
+                                successMsg += `💸 *Potong Saldo Pusat:* ${formatRupiah(brg.package_harga_int)}\n`;
+                                successMsg += `🆔 *Trx ID:* ${trxId}\n\n`;
+                                successMsg += `_Status: ${shot.data.message}_`;
+
+                                // Opsional: Simpan ke riwayat transaksi bot khusus owner
+                                historyTrx.push({ 
+                                    date: new Date(), 
+                                    sender: sender, 
+                                    type: 'dor_admin', 
+                                    item: brg.package_name, 
+                                    phone: targetPhone, 
+                                    price_server: brg.package_harga_int, 
+                                    trx_id: trxId, 
+                                    status: 'sukses' 
+                                });
+                                saveHistory(); // Pastikan fungsi saveHistory() tersedia di kodemu
+
+                                await sock.sendMessage(from, { text: successMsg }, { quoted: msg });
+                            } else {
+                                // Jika API merespon sukses terhubung tapi gagal eksekusi (misal saldo KMSP tidak cukup / nomor salah)
+                                await sock.sendMessage(from, { text: `⚠️ *DOR GAGAL (Meleset)*\n\nPesan Server: ${shot.data.message}` }, { quoted: msg });
+                            }
+
+                        } catch (e) {
+                            console.error("[ERROR FITUR DOR]:", e.response ? e.response.data : e.message);
+                            await sock.sendMessage(from, { text: '❌ Terjadi kesalahan sistem saat mencoba menembak paket. Cek console log.' }, { quoted: msg });
+                        }
+                        break;                   
                     case 'loginxl':
                         if (!q) return sock.sendMessage(from, { text: 'Contoh: .loginxl 62878xxxx' }, { quoted: msg }); let pn = q.replace(/[^0-9]/g, ''); if (pn.startsWith('0')) pn = '62' + pn.slice(1);
                         try { const resOtp = await axios.get(`https://golang-openapi-reqotp-xltembakservice.kmsp-store.com/v1`, { params: { api_key: config.apiKeyKMSP, phone: pn, method: 'OTP' } }); if (resOtp.data.status) { pendingLogin[sender] = { auth_id: resOtp.data.data.auth_id, phone: pn }; await sock.sendMessage(from, { text: `✅ OTP Terkirim!` }, { quoted: msg }); } else { await sock.sendMessage(from, { text: `❌ ${resOtp.data.message}` }, { quoted: msg }); } } catch (e) { } break;

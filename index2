@@ -1,0 +1,247 @@
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import pino from 'pino';
+import fs from 'fs';
+import axios from 'axios';
+
+// ================= CONFIG =================
+if (!fs.existsSync('./config.json')) {
+    console.error("File config.json tidak ditemukan!");
+    process.exit(1);
+}
+
+const externalConfig = JSON.parse(fs.readFileSync('./config.json'));
+
+const config = {
+    phoneNumber: externalConfig.phoneNumber,
+    ownerNumber: externalConfig.ownerNumber,
+    ownerName: externalConfig.ownerName,
+    apiKeyKMSP: externalConfig.apiKeyKMSP,
+    apiKeyPayment: externalConfig.apiKeyPayment,
+    markup: parseInt(externalConfig.markup) || 3000,
+
+    sessionName: "session",
+    userBalanceFile: "./database/user_balance.json",
+    historyFile: "./database/history.json"
+};
+
+// ================= DATABASE =================
+if (!fs.existsSync('./database')) fs.mkdirSync('./database');
+
+const loadObj = (file) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
+const saveObj = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+
+let userBalance = loadObj(config.userBalanceFile);
+let historyTrx = loadObj(config.historyFile);
+let pendingOrders = {};
+
+// ================= HELPER =================
+const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n);
+const saveBalance = () => saveObj(config.userBalanceFile, userBalance);
+const saveHistory = () => saveObj(config.historyFile, historyTrx);
+
+const isUserBusy = (sender) => !!pendingOrders[sender];
+
+// ================= START BOT =================
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState(config.sessionName);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+        version,
+        logger: pino({ level: 'silent' }),
+        auth: state,
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+
+        if (connection === 'open') console.log("✅ Bot Online");
+        if (connection === 'close') {
+            const reason = lastDisconnect?.error?.output?.statusCode;
+            if (reason !== DisconnectReason.loggedOut) startBot();
+        }
+    });
+
+    // ================= MESSAGE =================
+    sock.ev.on('messages.upsert', async (m) => {
+        try {
+            if (!m.messages || !m.messages[0]) return;
+
+            const msg = m.messages[0];
+            if (!msg.message || msg.key.fromMe) return;
+
+            const from = msg.key.remoteJid;
+            const sender = msg.key.participant || from;
+
+            const text =
+                msg.message.conversation ||
+                msg.message.extendedTextMessage?.text ||
+                '';
+
+            if (!text.startsWith('.')) return;
+
+            const args = text.split(' ');
+            const command = args.shift().slice(1).toLowerCase();
+
+            const isOwner = sender.includes(config.ownerNumber);
+
+            // ================= SWITCH =================
+            switch (command) {
+
+                // ================= MENU =================
+                case 'menu':
+                    await sock.sendMessage(from, {
+                        text: `🤖 BOT PPOB
+
+.menu
+.beli <kode> <no>
+.cekbayar
+.isisaldo <nominal>
+.saldo`
+                    }, { quoted: msg });
+                    break;
+
+                // ================= BELI =================
+                case 'beli':
+                    if (!args[0] || !args[1])
+                        return sock.sendMessage(from, { text: 'Format salah' }, { quoted: msg });
+
+                    if (isUserBusy(sender))
+                        return sock.sendMessage(from, { text: 'Masih ada transaksi pending' }, { quoted: msg });
+
+                    try {
+                        const resList = await axios.get(`https://golang-openapi-packagelist-xltembakservice.kmsp-store.com/v1?api_key=${config.apiKeyKMSP}`);
+                        const produk = resList.data.data.find(p => p.package_code === args[0]);
+
+                        if (!produk)
+                            return sock.sendMessage(from, { text: 'Produk tidak ditemukan' }, { quoted: msg });
+
+                        const harga = produk.package_harga_int + config.markup;
+
+                        const resPay = await axios.get(`https://my-payment.autsc.my.id/api/deposit`, {
+                            params: { amount: harga, apikey: config.apiKeyPayment }
+                        });
+
+                        const pay = resPay.data.data;
+
+                        pendingOrders[sender] = {
+                            type: 'buy',
+                            transaction_id: pay.transaction_id,
+                            product: produk,
+                            phone: args[1]
+                        };
+
+                        await sock.sendMessage(from, {
+                            image: { url: pay.qris_url },
+                            caption: `Bayar: ${formatRupiah(pay.total_amount)}\nKetik .cekbayar`
+                        }, { quoted: msg });
+
+                    } catch (e) {
+                        console.error(e);
+                    }
+                    break;
+
+                // ================= CEKBAYAR =================
+                case 'cekbayar':
+                    if (!pendingOrders[sender])
+                        return sock.sendMessage(from, { text: 'Tidak ada transaksi' }, { quoted: msg });
+
+                    const order = pendingOrders[sender];
+
+                    try {
+                        const res = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
+                            params: {
+                                transaction_id: order.transaction_id,
+                                apikey: config.apiKeyPayment
+                            }
+                        });
+
+                        if (res.data.paid) {
+                            await sock.sendMessage(from, { text: 'Pembayaran sukses' }, { quoted: msg });
+
+                            if (order.type === 'buy') {
+                                const buy = await axios.get(`https://golang-openapi-packagepurchase-xltembakservice.kmsp-store.com/v1`, {
+                                    params: {
+                                        api_key: config.apiKeyKMSP,
+                                        package_code: order.product.package_code,
+                                        phone: order.phone,
+                                        price_or_fee: order.product.package_harga_int
+                                    }
+                                });
+
+                                if (buy.data.status) {
+                                    await sock.sendMessage(from, {
+                                        text: `Sukses\nTrx: ${buy.data.data.trx_id}`
+                                    }, { quoted: msg });
+                                }
+                            }
+
+                            delete pendingOrders[sender];
+
+                        } else {
+                            await sock.sendMessage(from, { text: 'Belum dibayar' }, { quoted: msg });
+                        }
+
+                    } catch (e) {
+                        console.error(e);
+                    }
+                    break;
+
+                // ================= SALDO =================
+                case 'saldo':
+                    await sock.sendMessage(from, {
+                        text: `Saldo: ${formatRupiah(userBalance[sender] || 0)}`
+                    }, { quoted: msg });
+                    break;
+
+                // ================= ISI SALDO =================
+                case 'isisaldo':
+                    if (!args[0]) return;
+
+                    const nominal = parseInt(args[0]);
+
+                    const resTopup = await axios.get(`https://my-payment.autsc.my.id/api/deposit`, {
+                        params: { amount: nominal, apikey: config.apiKeyPayment }
+                    });
+
+                    const pay = resTopup.data.data;
+
+                    pendingOrders[sender] = {
+                        type: 'topup',
+                        transaction_id: pay.transaction_id,
+                        amount: nominal
+                    };
+
+                    await sock.sendMessage(from, {
+                        image: { url: pay.qris_url },
+                        caption: `Topup ${formatRupiah(nominal)}`
+                    }, { quoted: msg });
+                    break;
+
+                // ================= OWNER =================
+                case 'addsaldo':
+                    if (!isOwner) return;
+
+                    let target = args[0] + '@s.whatsapp.net';
+                    let amount = parseInt(args[1]);
+
+                    if (!userBalance[target]) userBalance[target] = 0;
+                    userBalance[target] += amount;
+
+                    saveBalance();
+
+                    await sock.sendMessage(from, { text: 'Saldo ditambah' }, { quoted: msg });
+                    break;
+
+            }
+
+        } catch (err) {
+            console.log(err);
+        }
+    });
+}
+
+startBot();

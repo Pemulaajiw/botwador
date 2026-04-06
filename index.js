@@ -322,17 +322,32 @@ async function startBot() {
                         await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran...' }, { quoted: msg });
                         const order = pendingOrders[sender];
 
-                        try {
-                            // Hit API Cek Status 
-                            const resStatus = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
-                                params: {
-                                    transaction_id: order.transaction_id,
-                                    apikey: config.apiKeyPayment
-                                }
-                            });
+                        setInterval(async () => {
+                        for (let user in pendingOrders) {
+                        const order = pendingOrders[user];
 
-                            // Logic Cek Status
-                            if (resStatus.data.paid === true) {
+        try {
+            const res = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
+                params: {
+                    transaction_id: order.transaction_id,
+                    apikey: config.apiKeyPayment
+                }
+            });
+
+            if (res.data.paid === true) {
+                console.log(`[AUTO] Pembayaran diterima: ${user}`);
+
+                // Kirim notif ke user
+                await sock.sendMessage(user, {
+                    text: '✅ Pembayaran terdeteksi otomatis!'
+                });
+
+                delete pendingOrders[user];
+            }
+
+        } catch (e) {}
+    }
+},
                                 // --- PEMBAYARAN SUKSES ---
                                 
                                 if (order.type === 'buy_direct') {
@@ -350,11 +365,6 @@ async function startBot() {
                                         } else {
                                             // Gagal Tembak (Saldo Payment sudah masuk ke Admin, tapi paket gagal)
                                             await sock.sendMessage(from, { text: `⚠️ Pembayaran sukses, tapi gagal tembak paket: ${buy.data.message}. Hubungi Admin untuk refund manual.` }, { quoted: msg });
-                                            if (Date.now() > order.expired) {
-                                            delete pendingOrders[sender];
-                                            return sock.sendMessage(from, {
-                                            text: '❌ Transaksi expired. Silakan buat ulang.'
-                                            }, { quoted: msg });
                                             }
                                         }
                                     } catch (e) { console.error(e); }

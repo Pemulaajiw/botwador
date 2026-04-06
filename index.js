@@ -315,39 +315,44 @@ async function startBot() {
                         } catch (e) { console.error(e); }
                         break;
 
-                    case 'cekbayar': // Cek Status API Baru
+                    case 'cekbayar': // Cek Status Pembayaran (Satu Kali Pengecekan)
                         if (!pendingOrders[sender]) return sock.sendMessage(from, { text: '❌ Tidak ada transaksi pending.' }, { quoted: msg });
-                        pendingOrders[sender].expired = Date.now() + (5 * 60 * 1000);
                         
-                        await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran...' }, { quoted: msg });
-                        const order = pendingOrders[sender];
+                        await sock.sendMessage(from, { text: '🔍 Mengecek status pembayaran ke server...' }, { quoted: msg });
+                        const currentOrder = pendingOrders[sender];
 
-                        setInterval(async () => {
-                        for (let user in pendingOrders) {
-                        const order = pendingOrders[user];
+                        try {
+                            const res = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
+                                params: {
+                                    transaction_id: currentOrder.transaction_id,
+                                    apikey: config.apiKeyPayment
+                                }
+                            });
 
-        try {
-            const res = await axios.get(`https://my-payment.autsc.my.id/api/status/payment`, {
-                params: {
-                    transaction_id: order.transaction_id,
-                    apikey: config.apiKeyPayment
-                }
-            });
+                            if (res.data.paid === true) { // Jika pembayaran sukses
+                                await sock.sendMessage(from, { text: '✅ Pembayaran berhasil dikonfirmasi! Pesanan sedang diproses...' }, { quoted: msg });
+                                
+                                // --- LOGIKA SETELAH BAYAR ---
+                                if (currentOrder.type === 'topup') {
+                                    userBalance[sender] = (userBalance[sender] || 0) + currentOrder.amount_added;
+                                    saveBalance();
+                                    await sock.sendMessage(from, { text: `💰 Saldo berhasil ditambahkan!\nNominal: ${formatRupiah(currentOrder.amount_added)}\nSaldo saat ini: ${formatRupiah(userBalance[sender])}` });
+                                } else if (currentOrder.type === 'buy_direct') {
+                                    // TODO: Masukkan logika API tembak XL KMSP di sini
+                                    await sock.sendMessage(from, { text: `🚀 Sedang menembak paket ${currentOrder.name} ke nomor ${currentOrder.phone}...` });
+                                }
+                                
+                                // Hapus pesanan dari antrean
+                                delete pendingOrders[sender];
+                            } else {
+                                await sock.sendMessage(from, { text: '⏳ Pembayaran belum terdeteksi. Silakan coba lagi dalam beberapa saat.' }, { quoted: msg });
+                            }
 
-            if (res.data.paid === true) {
-                console.log(`[AUTO] Pembayaran diterima: ${user}`);
-
-                // Kirim notif ke user
-                await sock.sendMessage(user, {
-                    text: '✅ Pembayaran terdeteksi otomatis!'
-                });
-
-                delete pendingOrders[user];
-            }
-
-        } catch (e) {}
-    }
-},
+                        } catch (e) {
+                            console.error('Error cekbayar:', e);
+                            await sock.sendMessage(from, { text: '❌ Terjadi kesalahan sistem saat menghubungi payment gateway.' }, { quoted: msg });
+                        }
+                        break;
                                 // --- PEMBAYARAN SUKSES ---
                                 
                                 if (order.type === 'buy_direct') {
